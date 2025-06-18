@@ -3,6 +3,7 @@
 import sys
 import pandas as pd
 from preprocessing import build_preprocessing_pipeline
+from model_selector import evaluate_models
 
 def main():
     if len(sys.argv) < 3:
@@ -29,6 +30,10 @@ def main():
 
     print(f"✅ Preprocessing complete. Processed shape: {X_processed.shape}")
     print("🎉 Ready for model selection and tuning!")
+
+    print("\n📊 Running model evaluation...\n")
+    leaderboard = evaluate_models(X_processed, y, scoring="f1")
+    print(leaderboard)
 
 if __name__ == "__main__":
     main()

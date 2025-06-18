@@ -3,33 +3,40 @@ __pycache__/
 *.py[cod]
 *.so
 
-# Virtual environment
+# Virtual environments
 .venv/
 env/
 venv/
+.conda/
+*.conda
+*.env
+
+# Conda environment files
+*.yaml
+*.yml
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
 # Data files
 data/
-!data/.gitkeep          # Keep the folder but not the data files
+!data/.gitkeep          # Keep folder but not actual datasets
 
 # Trained models
 models/
-!models/.gitkeep
+!models/.gitkeep        # Keep folder, ignore saved models
 
 # Environment variable files
 .env
 
-# Streamlit cache
+# Streamlit cache and config
 .streamlit/
 *.toml
 
 # Logs
 *.log
 
-# Mac/Windows system files
+# OS system files
 .DS_Store
 Thumbs.db
 
