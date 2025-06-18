@@ -1,0 +1,61 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environment
+.venv/
+env/
+venv/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Data files
+data/
+!data/.gitkeep          # Keep the folder but not the data files
+
+# Trained models
+models/
+!models/.gitkeep
+
+# Environment variable files
+.env
+
+# Streamlit cache
+.streamlit/
+*.toml
+
+# Logs
+*.log
+
+# Mac/Windows system files
+.DS_Store
+Thumbs.db
+
+# VSCode settings
+.vscode/
+
+# Docker
+*.pid
+
+# Coverage and test reports
+htmlcov/
+.coverage
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# Pytest
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+
+# Pylint
+.pylint.d/
+
+# Misc
+*.swp
