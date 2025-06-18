@@ -4,7 +4,9 @@ from pathlib import Path
 
 from preprocessing import build_preprocessing_pipeline
 from model_selector import evaluate_models
-from tuner import tune_random_forest
+from tuner import tune_multiple_models
+from explainer import explain_model
+import os
 from evaluator import (
     plot_confusion_matrix,
     plot_roc_curve,
@@ -63,7 +65,7 @@ def main():
             y_test = df_test[target_col]
             X_test = df_test.drop(columns=[target_col])
         else:
-            X_test = df_test.copy()  # unlabeled competition test set
+            X_test = df_test.copy()
         X_test_proc = preprocessor.transform(X_test)
 
     # ------------------------------------------------------------------ #
@@ -74,21 +76,39 @@ def main():
     print(leaderboard)
 
     # ------------------------------------------------------------------ #
-    # 4️⃣ HYPERPARAMETER TUNING
+    # 4️⃣ HYPERPARAMETER TUNING FOR ALL MODELS
     # ------------------------------------------------------------------ #
-    print("\n🎯 Tuning Random Forest with Optuna...\n")
-    best_model, _ = tune_random_forest(X_train_proc, y_train, n_trials=30)
+    print("\n🤖 Auto-tuning multiple models...\n")
+    model_list = ["RandomForest", "SVM", "MLP", "LogisticRegression"]
+    lb_tuned, tuned_models = tune_multiple_models(
+    X_train_proc, y_train,
+    model_list=model_list,
+    n_trials=30,
+    n_jobs=os.cpu_count()  
+)
+    print("\n🏆 Tuned Leaderboard")
+    print(lb_tuned)
+
+    # Pick the best tuned model
+    best_name = lb_tuned.iloc[0]["Model"]
+    best_model = tuned_models[best_name]
+    print(f"\n🥇 Best model after tuning: {best_name}")
+    X_df = pd.DataFrame(X_train_proc)
+    explain_model(best_model, X_df)
 
     # ------------------------------------------------------------------ #
     # 5️⃣ FINAL EVALUATION OR PREDICTION
     # ------------------------------------------------------------------ #
     if y_test is not None:
         print("\n🧪 Evaluating on hold-out test set...\n")
-        y_pred  = best_model.predict(X_test_proc)
-        y_proba = best_model.predict_proba(X_test_proc)[:, 1]
+        y_pred = best_model.predict(X_test_proc)
+        y_proba = best_model.predict_proba(X_test_proc)
+
+        # Handle multi-class safely
+        y_proba_bin = y_proba[:, 1] if y_proba.shape[1] > 1 else y_proba.ravel()
 
         plot_confusion_matrix(y_test, y_pred, title="Confusion Matrix (Hold-out)")
-        plot_roc_curve(y_test, y_proba, title="ROC Curve (Hold-out)")
+        plot_roc_curve(y_test, y_proba_bin, title="ROC Curve (Hold-out)")
         print_classification_report(y_test, y_pred)
     elif X_test_proc is not None:
         print("\n📤 Generating predictions for unlabeled test set...")
@@ -97,7 +117,7 @@ def main():
             "PassengerId": df_test.get("PassengerId", pd.RangeIndex(len(preds))),
             target_col: preds,
         })
-        out.to_csv("predictions.csv", index=False)
+        out.to_csv("predictions.csv", index=False, columns=["PassengerId", target_col])
         print("✅ Saved predictions to predictions.csv")
 
     # ------------------------------------------------------------------ #
