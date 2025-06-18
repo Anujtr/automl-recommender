@@ -1,5 +1,6 @@
 import shap, warnings
 import matplotlib.pyplot as plt
+import inspect
 
 def _choose_explainer(model, X):
     """
@@ -23,18 +24,26 @@ def explain_model(model, X, feature_names, max_display=20, save_path="models/sha
     Compute SHAP values, plot summary, and save to disk.
     """
     print("\n🔎 Generating SHAP explanations...")
+    try:
+        explainer = _choose_explainer(model, X)
+        # Check if 'check_additivity' is a valid argument for the explainer's __call__
+        call_args = inspect.signature(explainer.__call__).parameters
+        if "check_additivity" in call_args:
+            shap_values = explainer(X, check_additivity=False)
+        else:
+            shap_values = explainer(X)
 
-    explainer   = _choose_explainer(model, X)
-    shap_values = explainer(X, check_additivity=False)
-
-    shap.summary_plot(
-        shap_values,
-        X,
-        feature_names=feature_names,
-        max_display=max_display,
-        show=False,               # don't block headless environments
-    )
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    plt.close()  # free memory
-    print(f"📊 SHAP summary plot saved → {save_path}")
+        shap.summary_plot(
+            shap_values,
+            X,
+            feature_names=feature_names,
+            max_display=max_display,
+            show=False,               # don't block headless environments
+        )
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        plt.close()  # free memory
+        print(f"📊 SHAP summary plot saved → {save_path}")
+    except Exception as e:
+        print(f"⚠️  SHAP explainability failed: {e}")
+        return

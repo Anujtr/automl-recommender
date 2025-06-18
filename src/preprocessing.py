@@ -1,39 +1,38 @@
 # src/preprocessing.py
-
-import pandas as pd
-from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline
+import pandas as pd
 
 def build_preprocessing_pipeline(X: pd.DataFrame):
-    categorical_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
-    numerical_cols   = X.select_dtypes(include=["int64", "float64"]).columns.tolist()
+    num_cols = X.select_dtypes(include=["int64", "float64"]).columns.tolist()
+    cat_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
 
-    # --- transformers ---
-    numeric_tf = Pipeline(steps=[
+    num_pipe = Pipeline([
         ("imputer", SimpleImputer(strategy="mean")),
-        ("scaler",  StandardScaler())
+        ("scaler",  StandardScaler()),
     ])
 
-    onehot = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
-    categorical_tf = Pipeline(steps=[
+    cat_pipe = Pipeline([
         ("imputer", SimpleImputer(strategy="most_frequent")),
-        ("encoder", onehot)
+        # Use sparse_output if available, else fallback to sparse for older sklearn
+        ("onehot",  OneHotEncoder(handle_unknown="ignore", sparse_output=False) if "sparse_output" in OneHotEncoder().__init__.__code__.co_varnames else OneHotEncoder(handle_unknown="ignore", sparse=False)),
     ])
 
-    # Combine into ColumnTransformer
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ("num", numeric_tf, numerical_cols),
-            ("cat", categorical_tf, categorical_cols)
-        ]
-    )
-    # Fit and transform the data
-    X_processed = preprocessor.fit_transform(X)
+    preprocessor = ColumnTransformer([
+        ("num", num_pipe, num_cols),
+        ("cat", cat_pipe, cat_cols),
+    ])
 
-    # 🔑  Store feature names for SHAP / downstream use
-    cat_names = onehot.get_feature_names_out(categorical_cols)
-    preprocessor.feature_names_ = numerical_cols + cat_names.tolist()
+    # --- fit ---
+    X_proc = preprocessor.fit_transform(X)
 
-    return preprocessor, X_processed
+    # --- save feature names for later use (SHAP, etc.) ---
+    try:
+        preprocessor.feature_names_ = preprocessor.get_feature_names_out()
+    except AttributeError:
+        # very old sklearn fallback
+        preprocessor.feature_names_ = [f"f{i}" for i in range(X_proc.shape[1])]
+
+    return preprocessor, X_proc

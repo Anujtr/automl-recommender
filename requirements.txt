@@ -8,5 +8,5 @@ streamlit
 joblib
 scipy
 shap>=0.44
-matplotlib
+tqdm
 tqdm  

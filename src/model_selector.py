@@ -2,11 +2,6 @@
 
 import pandas as pd
 from sklearn.model_selection import cross_val_score
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import SVC
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import make_scorer, accuracy_score, f1_score
 import warnings
 from config import MODEL_CANDIDATES
@@ -35,10 +30,15 @@ def evaluate_models(X, y, cv=5, scoring="f1"):
     results = []
 
     for name, model in MODEL_CANDIDATES.items():
-        print(f"🔍 Evaluating {name}...")
+        clean_name = name.replace("LogisticRegression", "Logistic Regression") \
+                         .replace("RandomForest", "Random Forest") \
+                         .replace("SVM", "Support Vector Machine") \
+                         .replace("KNN", "K-Nearest Neighbors") \
+                         .replace("MLP", "Neural Net (MLP)")
+        print(f"🔍 Evaluating {clean_name}...")
         scores = cross_val_score(model, X, y, cv=cv, scoring=scoring_func)
         results.append({
-            "Model": name,
+            "Model": clean_name,
             "Mean Score": scores.mean(),
             "Std Dev": scores.std()
         })

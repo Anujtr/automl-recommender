@@ -6,9 +6,8 @@ from pathlib import Path
 from preprocessing import build_preprocessing_pipeline
 from model_selector import evaluate_models
 from tuner import tune_multiple_models
-from utils import get_feature_names
-from explainer import explain_model
 from utils import get_feature_names, load_dataset
+from explainer import explain_model
 from evaluator import (
     plot_confusion_matrix,
     plot_roc_curve,
@@ -75,7 +74,7 @@ def main():
     # 4️⃣ HYPERPARAMETER TUNING FOR ALL MODELS
     # ------------------------------------------------------------------ #
     print("\n🤖 Auto-tuning multiple models...\n")
-    model_list = ["RandomForest", "SVM", "MLP", "LogisticRegression"]
+    model_list = ["RandomForest", "SVM", "MLP", "LogisticRegression", "KNN"]
     lb_tuned, tuned_models = tune_multiple_models(
         X_train_proc, y_train,
         model_list=model_list,
@@ -83,9 +82,16 @@ def main():
         n_jobs=os.cpu_count()-2 if os.cpu_count() > 2 else 1,
     )
     print("\n🏆 Tuned Leaderboard")
-    print(lb_tuned)
+    print(lb_tuned[["Model", "Tuned F1"]])
+    if lb_tuned["Error"].notnull().any():
+        print("\n⚠️  Some models failed during tuning:")
+        print(lb_tuned[lb_tuned["Error"].notnull()][["Model", "Error"]])
 
-    best_name = lb_tuned.iloc[0]["Model"]
+    best_row = lb_tuned.iloc[0]
+    best_name = best_row["Model"]
+    if best_name not in tuned_models:
+        print(f"\n❌ Best model '{best_name}' failed during tuning. Exiting.")
+        sys.exit(1)
     best_model = tuned_models[best_name]
     print(f"\n🥇 Best model after tuning: {best_name}")
 

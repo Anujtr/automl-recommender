@@ -6,11 +6,11 @@ from sklearn.neural_network import MLPClassifier
 
 # Model candidates for baseline evaluation
 MODEL_CANDIDATES = {
-    "Logistic Regression": LogisticRegression(max_iter=1000),
-    "Random Forest": RandomForestClassifier(n_estimators=100),
-    "Support Vector Machine": SVC(probability=True),
-    "K-Nearest Neighbors": KNeighborsClassifier(),
-    "Neural Net (MLP)": MLPClassifier(max_iter=1000)
+    "LogisticRegression": LogisticRegression(max_iter=1000),
+    "RandomForest": RandomForestClassifier(n_estimators=100),
+    "SVM": SVC(probability=True),
+    "KNN": KNeighborsClassifier(),
+    "MLP": MLPClassifier(max_iter=1000)
 }
 
 # Tuning configs for Optuna
@@ -51,6 +51,14 @@ TUNING_CONFIGS = {
             "alpha": trial.suggest_float("alpha", 1e-5, 1e-2, log=True),
             "learning_rate_init": trial.suggest_float("learning_rate_init", 1e-4, 1e-2, log=True),
             "max_iter": 1000
+        }
+    },
+    "KNN": {
+        "estimator": KNeighborsClassifier,
+        "params": lambda trial: {
+            "n_neighbors": trial.suggest_int("n_neighbors", 3, 20),
+            "weights": trial.suggest_categorical("weights", ["uniform", "distance"]),
+            "p": trial.suggest_int("p", 1, 2),
         }
     }
 }
