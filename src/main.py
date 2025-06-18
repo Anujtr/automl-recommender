@@ -1,24 +1,20 @@
 import sys
+import os
 import pandas as pd
 from pathlib import Path
 
 from preprocessing import build_preprocessing_pipeline
 from model_selector import evaluate_models
 from tuner import tune_multiple_models
+from utils import get_feature_names
 from explainer import explain_model
-import os
+from utils import get_feature_names, load_dataset
 from evaluator import (
     plot_confusion_matrix,
     plot_roc_curve,
     print_classification_report,
     save_model,
 )
-
-def load_dataset(path: str) -> pd.DataFrame:
-    path_obj = Path(path)
-    if not path_obj.exists():
-        sys.exit(f"❌ File not found: {path}")
-    return pd.read_csv(path_obj)
 
 def main():
     if len(sys.argv) < 3:
@@ -81,20 +77,30 @@ def main():
     print("\n🤖 Auto-tuning multiple models...\n")
     model_list = ["RandomForest", "SVM", "MLP", "LogisticRegression"]
     lb_tuned, tuned_models = tune_multiple_models(
-    X_train_proc, y_train,
-    model_list=model_list,
-    n_trials=30,
-    n_jobs=os.cpu_count()  
-)
+        X_train_proc, y_train,
+        model_list=model_list,
+        n_trials=30,
+        n_jobs=os.cpu_count()-2 if os.cpu_count() > 2 else 1,
+    )
     print("\n🏆 Tuned Leaderboard")
     print(lb_tuned)
 
-    # Pick the best tuned model
     best_name = lb_tuned.iloc[0]["Model"]
     best_model = tuned_models[best_name]
     print(f"\n🥇 Best model after tuning: {best_name}")
-    X_df = pd.DataFrame(X_train_proc)
-    explain_model(best_model, X_df)
+
+    # ------------------------------------------------------------------ #
+    # 🧠 SHAP EXPLAINABILITY
+    # ------------------------------------------------------------------ #
+    feature_names = get_feature_names(preprocessor)
+    if X_train_proc.shape[1] <= 8000:
+        try:
+            X_df = pd.DataFrame(X_train_proc, columns=feature_names)
+            explain_model(best_model, X_df, feature_names)
+        except Exception as e:
+            print(f"⚠️  SHAP failed: {e}")
+    else:
+        print("⚠️  Too many features for SHAP – skipping.")
 
     # ------------------------------------------------------------------ #
     # 5️⃣ FINAL EVALUATION OR PREDICTION
@@ -104,7 +110,6 @@ def main():
         y_pred = best_model.predict(X_test_proc)
         y_proba = best_model.predict_proba(X_test_proc)
 
-        # Handle multi-class safely
         y_proba_bin = y_proba[:, 1] if y_proba.shape[1] > 1 else y_proba.ravel()
 
         plot_confusion_matrix(y_test, y_pred, title="Confusion Matrix (Hold-out)")
@@ -124,7 +129,6 @@ def main():
     # 6️⃣ SAVE BEST MODEL
     # ------------------------------------------------------------------ #
     save_model(best_model, filename="models/best_model.pkl")
-
 
 if __name__ == "__main__":
     main()

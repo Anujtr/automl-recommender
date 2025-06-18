@@ -9,17 +9,10 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import make_scorer, accuracy_score, f1_score
 import warnings
+from config import MODEL_CANDIDATES
 
 warnings.filterwarnings("ignore")
 
-# Define models to try
-MODEL_CANDIDATES = {
-    "Logistic Regression": LogisticRegression(max_iter=1000),
-    "Random Forest": RandomForestClassifier(n_estimators=100),
-    "Support Vector Machine": SVC(probability=True),
-    "K-Nearest Neighbors": KNeighborsClassifier(),
-    "Neural Net (MLP)": MLPClassifier(max_iter=1000)
-}
 
 def evaluate_models(X, y, cv=5, scoring="f1"):
     """
