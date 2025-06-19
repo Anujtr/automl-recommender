@@ -3,12 +3,13 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
+from xgboost import XGBClassifier
 
 # Model candidates for baseline evaluation
 MODEL_CANDIDATES = {
-    "LogisticRegression": LogisticRegression(max_iter=1000),
-    "RandomForest": RandomForestClassifier(n_estimators=100),
-    "SVM": SVC(probability=True),
+    "LogisticRegression": LogisticRegression(max_iter=1000, class_weight='balanced'),
+    "RandomForest": RandomForestClassifier(n_estimators=100, n_jobs=-1, class_weight='balanced'),
+    "SVM": SVC(probability=True, class_weight='balanced'),
     "KNN": KNeighborsClassifier(),
     "MLP": MLPClassifier(max_iter=1000)
 }
@@ -22,7 +23,9 @@ TUNING_CONFIGS = {
             "max_depth": trial.suggest_int("max_depth", 3, 30),
             "min_samples_split": trial.suggest_int("min_samples_split", 2, 10),
             "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 5),
-            "max_features": trial.suggest_categorical("max_features", ["sqrt", "log2", None])
+            "max_features": trial.suggest_categorical("max_features", ["sqrt", "log2", None]),
+            "n_jobs": -1,
+            "class_weight": "balanced"
         }
     },
     "LogisticRegression": {
@@ -31,7 +34,8 @@ TUNING_CONFIGS = {
             "C": trial.suggest_float("C", 1e-3, 10.0, log=True),
             "penalty": trial.suggest_categorical("penalty", ["l2"]),
             "solver": trial.suggest_categorical("solver", ["liblinear", "lbfgs"]),
-            "max_iter": 1000
+            "max_iter": 1000,
+            "class_weight": "balanced"
         }
     },
     "SVM": {
@@ -40,7 +44,8 @@ TUNING_CONFIGS = {
             "C": trial.suggest_float("C", 1e-3, 10.0, log=True),
             "kernel": trial.suggest_categorical("kernel", ["linear", "rbf", "poly"]),
             "gamma": trial.suggest_categorical("gamma", ["scale", "auto"]),
-            "probability": True
+            "probability": True,
+            "class_weight": "balanced"
         }
     },
     "MLP": {
@@ -58,7 +63,18 @@ TUNING_CONFIGS = {
         "params": lambda trial: {
             "n_neighbors": trial.suggest_int("n_neighbors", 3, 20),
             "weights": trial.suggest_categorical("weights", ["uniform", "distance"]),
-            "p": trial.suggest_int("p", 1, 2),
+            "p": trial.suggest_int("p", 1, 2)
+        }
+    },
+    "XGBoost": {
+        "estimator": XGBClassifier,
+        "params": lambda trial: {
+            "n_estimators": trial.suggest_int("n_estimators", 50, 300),
+            "max_depth": trial.suggest_int("max_depth", 3, 12),
+            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+            "subsample": trial.suggest_float("subsample", 0.5, 1.0),
+            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
+            "n_jobs": -1
         }
     }
 }

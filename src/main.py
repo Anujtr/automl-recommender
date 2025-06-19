@@ -2,6 +2,9 @@ import sys
 import os
 import pandas as pd
 from pathlib import Path
+import argparse
+import yaml
+import json
 
 from preprocessing import build_preprocessing_pipeline
 from model_selector import evaluate_models
@@ -14,6 +17,19 @@ from evaluator import (
     print_classification_report,
     save_model,
 )
+
+def load_config(config_path):
+    config_path = Path(config_path)
+    if not config_path.exists():
+        raise FileNotFoundError(f"❌ Config file not found: {config_path}")
+    if config_path.suffix in [".yaml", ".yml"]:
+        with open(config_path, "r") as f:
+            return yaml.safe_load(f)
+    elif config_path.suffix == ".json":
+        with open(config_path, "r") as f:
+            return json.load(f)
+    else:
+        raise ValueError("Config file must be .yaml, .yml, or .json")
 
 def load_and_preprocess(train_path, target_col, test_path=None):
     print(f"\n📂 Loading training data from: {train_path}")
@@ -52,13 +68,14 @@ def run_baselines(X_train_proc, y_train):
     print(leaderboard)
     return leaderboard
 
-def run_tuning_and_select_best(X_train_proc, y_train, preprocessor, model_list):
+def run_tuning_and_select_best(X_train_proc, y_train, preprocessor, model_list, n_trials=30, n_jobs=1, cv_n_jobs=1):
     print("\n🤖 Auto-tuning multiple models...\n")
     lb_tuned, tuned_models = tune_multiple_models(
         X_train_proc, y_train,
         model_list=model_list,
-        n_trials=30,
-        n_jobs=os.cpu_count()-2 if os.cpu_count() > 2 else 1,
+        n_trials=n_trials,
+        n_jobs=n_jobs,
+        cv_n_jobs=cv_n_jobs,
     )
     print("\n🏆 Tuned Leaderboard")
     print(lb_tuned[["Model", "Tuned F1"]])
@@ -88,7 +105,6 @@ def run_tuning_and_select_best(X_train_proc, y_train, preprocessor, model_list):
     return best_model, best_name
 
 def evaluate_model(best_model, best_name, df_test, X_test_proc, y_test, target_col):
-    # ...existing code...
     if y_test is not None:
         print("\n🧪 Evaluating on hold-out test set...\n")
         y_pred = best_model.predict(X_test_proc)
@@ -109,23 +125,45 @@ def evaluate_model(best_model, best_name, df_test, X_test_proc, y_test, target_c
     save_model(best_model, filename="models/best_model.pkl")
 
 def main():
-    if len(sys.argv) < 3:
+    parser = argparse.ArgumentParser(description="AutoML Recommender")
+    parser.add_argument("train_csv", nargs="?", help="Path to training CSV")
+    parser.add_argument("target_col", nargs="?", help="Target column name")
+    parser.add_argument("test_csv", nargs="?", default=None, help="Path to test CSV (optional)")
+    parser.add_argument("--config", default="config.yaml", help="YAML/JSON config file (default: config.yaml)")
+    parser.add_argument("--n_trials", type=int, help="Number of Optuna trials per model")
+    parser.add_argument("--n_jobs", type=int, help="Number of parallel jobs for tuning")
+    parser.add_argument("--cv_n_jobs", type=int, help="Number of parallel jobs for cross-validation")
+    parser.add_argument("--models", nargs="+", help="List of models to tune (overrides config)")
+    args = parser.parse_args()
+
+    # Load config file if present
+    config = {}
+    if Path(args.config).exists():
+        config = load_config(args.config)
+
+    # CLI overrides config
+    train_path = args.train_csv or config.get("train_csv")
+    target_col = args.target_col or config.get("target_col")
+    test_path = args.test_csv or config.get("test_csv")
+    n_trials = args.n_trials or config.get("n_trials", 30)
+    n_jobs = args.n_jobs or config.get("n_jobs", (os.cpu_count()-2 if os.cpu_count() > 2 else 1))
+    cv_n_jobs = args.cv_n_jobs or config.get("cv_n_jobs", 1)
+    model_list = args.models or config.get("models", ["RandomForest", "SVM", "MLP", "LogisticRegression", "KNN", "XGBoost"])
+
+    if not train_path or not target_col:
         print(
-            "Usage: python src/main.py <train_csv> <target_column> [test_csv]",
+            "Usage: python src/main.py <train_csv> <target_column> [test_csv] [--config config.yaml]",
             file=sys.stderr,
         )
         sys.exit(1)
-
-    train_path = sys.argv[1]
-    target_col = sys.argv[2]
-    test_path  = sys.argv[3] if len(sys.argv) >= 4 else None
 
     X_train_proc, y_train, preprocessor, df_test, X_test_proc, y_test = load_and_preprocess(
         train_path, target_col, test_path
     )
     run_baselines(X_train_proc, y_train)
-    model_list = ["RandomForest", "SVM", "MLP", "LogisticRegression", "KNN"]
-    best_model, best_name = run_tuning_and_select_best(X_train_proc, y_train, preprocessor, model_list)
+    best_model, best_name = run_tuning_and_select_best(
+        X_train_proc, y_train, preprocessor, model_list, n_trials=n_trials, n_jobs=n_jobs, cv_n_jobs=cv_n_jobs
+    )
     evaluate_model(best_model, best_name, df_test, X_test_proc, y_test, target_col)
 
 if __name__ == "__main__":

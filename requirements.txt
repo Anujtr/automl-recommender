@@ -10,3 +10,4 @@ scipy
 shap>=0.44
 tqdm
 tqdm  
+xgboost
