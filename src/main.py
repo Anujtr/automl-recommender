@@ -15,24 +15,9 @@ from evaluator import (
     save_model,
 )
 
-def main():
-    if len(sys.argv) < 3:
-        print(
-            "Usage: python src/main.py <train_csv> <target_column> [test_csv]",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    train_path = sys.argv[1]
-    target_col = sys.argv[2]
-    test_path  = sys.argv[3] if len(sys.argv) >= 4 else None
-
-    # ------------------------------------------------------------------ #
-    # 1️⃣ LOAD DATASETS
-    # ------------------------------------------------------------------ #
+def load_and_preprocess(train_path, target_col, test_path=None):
     print(f"\n📂 Loading training data from: {train_path}")
     df_train = load_dataset(train_path)
-
     if target_col not in df_train.columns:
         sys.exit(f"❌ Target column '{target_col}' not found in training set.")
 
@@ -45,12 +30,8 @@ def main():
     if df_test is not None:
         print(f"✅ Test  shape: {df_test.shape}")
 
-    # ------------------------------------------------------------------ #
-    # 2️⃣ PREPROCESSING (fit on train, transform train & test)
-    # ------------------------------------------------------------------ #
     X_train = df_train.drop(columns=[target_col])
     y_train = df_train[target_col]
-
     preprocessor, X_train_proc = build_preprocessing_pipeline(X_train)
     print(f"✅ Preprocessing complete. Train processed shape: {X_train_proc.shape}")
 
@@ -63,18 +44,16 @@ def main():
             X_test = df_test.copy()
         X_test_proc = preprocessor.transform(X_test)
 
-    # ------------------------------------------------------------------ #
-    # 3️⃣ BASELINE MODEL EVALUATION
-    # ------------------------------------------------------------------ #
+    return X_train_proc, y_train, preprocessor, df_test, X_test_proc, y_test
+
+def run_baselines(X_train_proc, y_train):
     print("\n📊 Running model evaluation on training set...\n")
     leaderboard = evaluate_models(X_train_proc, y_train, scoring="f1")
     print(leaderboard)
+    return leaderboard
 
-    # ------------------------------------------------------------------ #
-    # 4️⃣ HYPERPARAMETER TUNING FOR ALL MODELS
-    # ------------------------------------------------------------------ #
+def run_tuning_and_select_best(X_train_proc, y_train, preprocessor, model_list):
     print("\n🤖 Auto-tuning multiple models...\n")
-    model_list = ["RandomForest", "SVM", "MLP", "LogisticRegression", "KNN"]
     lb_tuned, tuned_models = tune_multiple_models(
         X_train_proc, y_train,
         model_list=model_list,
@@ -95,9 +74,7 @@ def main():
     best_model = tuned_models[best_name]
     print(f"\n🥇 Best model after tuning: {best_name}")
 
-    # ------------------------------------------------------------------ #
-    # 🧠 SHAP EXPLAINABILITY
-    # ------------------------------------------------------------------ #
+    # SHAP explainability
     feature_names = get_feature_names(preprocessor)
     if X_train_proc.shape[1] <= 8000:
         try:
@@ -108,16 +85,15 @@ def main():
     else:
         print("⚠️  Too many features for SHAP – skipping.")
 
-    # ------------------------------------------------------------------ #
-    # 5️⃣ FINAL EVALUATION OR PREDICTION
-    # ------------------------------------------------------------------ #
+    return best_model, best_name
+
+def evaluate_model(best_model, best_name, df_test, X_test_proc, y_test, target_col):
+    # ...existing code...
     if y_test is not None:
         print("\n🧪 Evaluating on hold-out test set...\n")
         y_pred = best_model.predict(X_test_proc)
         y_proba = best_model.predict_proba(X_test_proc)
-
         y_proba_bin = y_proba[:, 1] if y_proba.shape[1] > 1 else y_proba.ravel()
-
         plot_confusion_matrix(y_test, y_pred, title="Confusion Matrix (Hold-out)")
         plot_roc_curve(y_test, y_proba_bin, title="ROC Curve (Hold-out)")
         print_classification_report(y_test, y_pred)
@@ -130,11 +106,27 @@ def main():
         })
         out.to_csv("predictions.csv", index=False, columns=["PassengerId", target_col])
         print("✅ Saved predictions to predictions.csv")
-
-    # ------------------------------------------------------------------ #
-    # 6️⃣ SAVE BEST MODEL
-    # ------------------------------------------------------------------ #
     save_model(best_model, filename="models/best_model.pkl")
+
+def main():
+    if len(sys.argv) < 3:
+        print(
+            "Usage: python src/main.py <train_csv> <target_column> [test_csv]",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    train_path = sys.argv[1]
+    target_col = sys.argv[2]
+    test_path  = sys.argv[3] if len(sys.argv) >= 4 else None
+
+    X_train_proc, y_train, preprocessor, df_test, X_test_proc, y_test = load_and_preprocess(
+        train_path, target_col, test_path
+    )
+    run_baselines(X_train_proc, y_train)
+    model_list = ["RandomForest", "SVM", "MLP", "LogisticRegression", "KNN"]
+    best_model, best_name = run_tuning_and_select_best(X_train_proc, y_train, preprocessor, model_list)
+    evaluate_model(best_model, best_name, df_test, X_test_proc, y_test, target_col)
 
 if __name__ == "__main__":
     main()
