@@ -38,11 +38,11 @@ def explain_model(model, X, feature_names, max_display=20, save_path="models/sha
             X,
             feature_names=feature_names,
             max_display=max_display,
-            show=False,               # don't block headless environments
+            show=False,
         )
         plt.tight_layout()
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        plt.close()  # free memory
+        plt.close()
         print(f"📊 SHAP summary plot saved → {save_path}")
     except Exception as e:
         print(f"⚠️  SHAP explainability failed: {e}")

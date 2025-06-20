@@ -9,5 +9,9 @@ joblib
 scipy
 shap>=0.44
 tqdm
-tqdm  
 xgboost
+lightgbm
+catboost
+imblearn
+# Optional: uncomment to enable BoTorch-based Bayesian optimisation
+# optuna-integration[botorch]

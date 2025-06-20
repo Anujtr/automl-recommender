@@ -5,6 +5,7 @@ from pathlib import Path
 import argparse
 import yaml
 import json
+from sklearn.ensemble import VotingClassifier
 
 from preprocessing import build_preprocessing_pipeline
 from model_selector import evaluate_models
@@ -31,7 +32,7 @@ def load_config(config_path):
     else:
         raise ValueError("Config file must be .yaml, .yml, or .json")
 
-def load_and_preprocess(train_path, target_col, test_path=None):
+def load_and_preprocess(train_path, target_col, test_path=None, use_polynomial=False, use_interactions=False):
     print(f"\n📂 Loading training data from: {train_path}")
     df_train = load_dataset(train_path)
     if target_col not in df_train.columns:
@@ -48,7 +49,11 @@ def load_and_preprocess(train_path, target_col, test_path=None):
 
     X_train = df_train.drop(columns=[target_col])
     y_train = df_train[target_col]
-    preprocessor, X_train_proc = build_preprocessing_pipeline(X_train)
+    preprocessor, X_train_proc = build_preprocessing_pipeline(
+        X_train,
+        use_polynomial=use_polynomial,
+        use_interactions=use_interactions
+    )
     print(f"✅ Preprocessing complete. Train processed shape: {X_train_proc.shape}")
 
     X_test_proc, y_test = None, None
@@ -62,13 +67,16 @@ def load_and_preprocess(train_path, target_col, test_path=None):
 
     return X_train_proc, y_train, preprocessor, df_test, X_test_proc, y_test
 
-def run_baselines(X_train_proc, y_train):
+def run_baselines(X_train_proc, y_train, scoring):
     print("\n📊 Running model evaluation on training set...\n")
-    leaderboard = evaluate_models(X_train_proc, y_train, scoring="f1")
+    leaderboard = evaluate_models(X_train_proc, y_train, scoring=scoring)
     print(leaderboard)
     return leaderboard
 
-def run_tuning_and_select_best(X_train_proc, y_train, preprocessor, model_list, n_trials=30, n_jobs=1, cv_n_jobs=1):
+def run_tuning_and_select_best(
+    X_train_proc, y_train, preprocessor, model_list, n_trials=30, n_jobs=1, cv_n_jobs=1,
+    sampler="TPESampler", scoring="f1", use_smote=False, export_leaderboard_path=None, export_params_path=None
+):
     print("\n🤖 Auto-tuning multiple models...\n")
     lb_tuned, tuned_models = tune_multiple_models(
         X_train_proc, y_train,
@@ -76,12 +84,21 @@ def run_tuning_and_select_best(X_train_proc, y_train, preprocessor, model_list, 
         n_trials=n_trials,
         n_jobs=n_jobs,
         cv_n_jobs=cv_n_jobs,
+        sampler=sampler,
+        scoring=scoring,
+        use_smote=use_smote,
+        export_leaderboard_path=export_leaderboard_path,
+        export_params_path=export_params_path,
     )
     print("\n🏆 Tuned Leaderboard")
-    print(lb_tuned[["Model", "Tuned F1"]])
+    print(lb_tuned[["Model", "Tuned Score"]])
     if lb_tuned["Error"].notnull().any():
         print("\n⚠️  Some models failed during tuning:")
         print(lb_tuned[lb_tuned["Error"].notnull()][["Model", "Error"]])
+
+    if lb_tuned.empty or lb_tuned["Tuned Score"].isnull().all():
+        print("\n❌ All models failed during tuning. Exiting.")
+        sys.exit(1)
 
     best_row = lb_tuned.iloc[0]
     best_name = best_row["Model"]
@@ -102,9 +119,9 @@ def run_tuning_and_select_best(X_train_proc, y_train, preprocessor, model_list, 
     else:
         print("⚠️  Too many features for SHAP – skipping.")
 
-    return best_model, best_name
+    return best_model, best_name, lb_tuned, tuned_models
 
-def evaluate_model(best_model, best_name, df_test, X_test_proc, y_test, target_col):
+def evaluate_model(best_model, best_name, df_test, X_test_proc, y_test, target_col, scoring):
     if y_test is not None:
         print("\n🧪 Evaluating on hold-out test set...\n")
         y_pred = best_model.predict(X_test_proc)
@@ -124,6 +141,60 @@ def evaluate_model(best_model, best_name, df_test, X_test_proc, y_test, target_c
         print("✅ Saved predictions to predictions.csv")
     save_model(best_model, filename="models/best_model.pkl")
 
+def evaluate_ensemble(
+    lb_tuned, tuned_models, df_test, X_test_proc, y_test, target_col, scoring, X_train_proc, y_train,
+    ensemble_models=None, ensemble_voting="soft"
+):
+    # Use config/CLI-provided ensemble_models if given, else top 3
+    if ensemble_models:
+        top_models = [m for m in ensemble_models if m in tuned_models and lb_tuned[lb_tuned["Model"] == m]["Error"].isnull().any()]
+        if len(top_models) < 2:
+            print("⚠️  Not enough valid models in ensemble_models config for ensemble. Falling back to top 3.")
+            top_models = lb_tuned[lb_tuned["Error"].isnull()].head(3)["Model"].tolist()
+    else:
+        top_models = lb_tuned[lb_tuned["Error"].isnull()].head(3)["Model"].tolist()
+    if len(top_models) < 2:
+        print("⚠️  Not enough successful models to build an ensemble.")
+        return
+
+    voters = []
+    for name in top_models:
+        model = tuned_models.get(name)
+        if model is None:
+            continue
+        try:
+            _ = model.predict_proba(X_train_proc[:3])
+            voters.append((name, model))
+        except Exception as e:
+            print(f"⚠️  Skipping {name} – no usable predict_proba ({e}).")
+
+    if len(voters) < 2:
+        print("⚠️  After filtering, fewer than 2 models remain for ensemble.")
+        return
+
+    print(f"\n🤝 Evaluating ensemble of: {', '.join([n for n, _ in voters])}")
+    ensemble = VotingClassifier(estimators=voters, voting=ensemble_voting, n_jobs=-1)
+    ensemble.fit(X_train_proc, y_train)
+
+    if y_test is not None and X_test_proc is not None:
+        y_pred  = ensemble.predict(X_test_proc)
+        y_proba = ensemble.predict_proba(X_test_proc)
+        y_proba_bin = y_proba[:, 1] if y_proba.shape[1] > 1 else y_proba.ravel()
+        plot_confusion_matrix(y_test, y_pred, title="Confusion Matrix (Ensemble)")
+        plot_roc_curve(y_test, y_proba_bin, title="ROC Curve (Ensemble)")
+        print_classification_report(y_test, y_pred)
+    elif X_test_proc is not None:
+        preds = ensemble.predict(X_test_proc)
+        out = pd.DataFrame({
+            "PassengerId": df_test.get("PassengerId", pd.RangeIndex(len(preds))),
+            target_col: preds,
+        })
+        out.to_csv("ensemble_predictions.csv", index=False,
+                   columns=["PassengerId", target_col])
+        print("✅ Saved ensemble predictions → ensemble_predictions.csv")
+
+    save_model(ensemble, filename="models/ensemble_model.pkl")
+
 def main():
     parser = argparse.ArgumentParser(description="AutoML Recommender")
     parser.add_argument("train_csv", nargs="?", help="Path to training CSV")
@@ -134,6 +205,15 @@ def main():
     parser.add_argument("--n_jobs", type=int, help="Number of parallel jobs for tuning")
     parser.add_argument("--cv_n_jobs", type=int, help="Number of parallel jobs for cross-validation")
     parser.add_argument("--models", nargs="+", help="List of models to tune (overrides config)")
+    parser.add_argument("--scoring", type=str, help="Scoring metric (f1, roc_auc, precision, etc.)")
+    parser.add_argument("--sampler", type=str, help="Optuna sampler (TPESampler, BoTorchSampler, etc.)")
+    parser.add_argument("--use_smote", action="store_true", help="Enable SMOTE oversampling")
+    parser.add_argument("--use_polynomial", action="store_true", help="Enable polynomial features")
+    parser.add_argument("--use_interactions", action="store_true", help="Enable interaction features")
+    parser.add_argument("--export_leaderboard", type=str, help="Export leaderboard CSV")
+    parser.add_argument("--export_params", type=str, help="Export tuned params JSON")
+    parser.add_argument("--ensemble_models", nargs="+", help="List of models to use in ensemble (overrides config)")
+    parser.add_argument("--ensemble_voting", type=str, choices=["soft", "hard"], help="Voting type for ensemble (default: soft)")
     args = parser.parse_args()
 
     # Load config file if present
@@ -148,7 +228,16 @@ def main():
     n_trials = args.n_trials or config.get("n_trials", 30)
     n_jobs = args.n_jobs or config.get("n_jobs", (os.cpu_count()-2 if os.cpu_count() > 2 else 1))
     cv_n_jobs = args.cv_n_jobs or config.get("cv_n_jobs", 1)
-    model_list = args.models or config.get("models", ["RandomForest", "SVM", "MLP", "LogisticRegression", "KNN", "XGBoost"])
+    model_list = args.models or config.get("models", ["RandomForest", "SVM", "MLP", "LogisticRegression", "KNN", "XGBoost", "LightGBM", "CatBoost"])
+    scoring = args.scoring or config.get("scoring", "f1")
+    sampler = args.sampler or config.get("sampler", "TPESampler")
+    use_smote = args.use_smote or config.get("use_smote", False)
+    use_polynomial = args.use_polynomial or config.get("use_polynomial", False)
+    use_interactions = args.use_interactions or config.get("use_interactions", False)
+    export_leaderboard = args.export_leaderboard or config.get("export_leaderboard", None)
+    export_params = args.export_params or config.get("export_params", None)
+    ensemble_models = args.ensemble_models or config.get("ensemble_models", None)
+    ensemble_voting = args.ensemble_voting or config.get("ensemble_voting", "soft")
 
     if not train_path or not target_col:
         print(
@@ -158,13 +247,21 @@ def main():
         sys.exit(1)
 
     X_train_proc, y_train, preprocessor, df_test, X_test_proc, y_test = load_and_preprocess(
-        train_path, target_col, test_path
+        train_path, target_col, test_path,
+        use_polynomial=use_polynomial,
+        use_interactions=use_interactions
     )
-    run_baselines(X_train_proc, y_train)
-    best_model, best_name = run_tuning_and_select_best(
-        X_train_proc, y_train, preprocessor, model_list, n_trials=n_trials, n_jobs=n_jobs, cv_n_jobs=cv_n_jobs
+    run_baselines(X_train_proc, y_train, scoring=scoring)
+    best_model, best_name, lb_tuned, tuned_models = run_tuning_and_select_best(
+        X_train_proc, y_train, preprocessor, model_list, n_trials=n_trials, n_jobs=n_jobs, cv_n_jobs=cv_n_jobs,
+        sampler=sampler, scoring=scoring, use_smote=use_smote,
+        export_leaderboard_path=export_leaderboard, export_params_path=export_params
     )
-    evaluate_model(best_model, best_name, df_test, X_test_proc, y_test, target_col)
+    evaluate_model(best_model, best_name, df_test, X_test_proc, y_test, target_col, scoring)
+    evaluate_ensemble(
+        lb_tuned, tuned_models, df_test, X_test_proc, y_test, target_col, scoring, X_train_proc, y_train,
+        ensemble_models=ensemble_models, ensemble_voting=ensemble_voting
+    )
 
 if __name__ == "__main__":
     main()

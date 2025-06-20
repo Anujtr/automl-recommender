@@ -53,3 +53,11 @@ conda activate automl
 
 # Optional: Add Jupyter kernel
 python -m ipykernel install --user --name=automl --display-name "Python (automl)"
+```
+
+---
+
+## Notes
+
+- CatBoost may create a `catboost_info/` directory with logs. This is ignored by default in `.gitignore`.
+- For full feature usage, see `config.yaml` and run with `python src/main.py --help`.
