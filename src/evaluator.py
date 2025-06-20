@@ -40,5 +40,7 @@ def print_classification_report(y_true, y_pred):
     print(classification_report(y_true, y_pred))
 
 def save_model(model, filename="models/best_model.pkl"):
+    import os
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
     joblib.dump(model, filename)
     print(f"💾 Model saved to {filename}")
