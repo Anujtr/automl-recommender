@@ -1,5 +1,6 @@
 import sys
 import os
+import numpy as np
 import pandas as pd
 from pathlib import Path
 import argparse
@@ -195,6 +196,89 @@ def evaluate_ensemble(
 
     save_model(ensemble, filename="models/ensemble_model.pkl")
 
+import io
+
+def generate_report(
+    report_path,
+    baseline_leaderboard,
+    tuned_leaderboard,
+    tuned_params,
+    best_name,
+    best_model,
+    shap_summary,
+    test_metrics,
+    ensemble_metrics,
+    ensemble_names,
+):
+    with open(report_path, "w") as f:
+        f.write("# AutoML Recommender Report\n\n")
+
+        f.write("## Baseline Model Scores\n")
+        f.write(baseline_leaderboard.to_string(index=False))
+        f.write("\n\n")
+
+        f.write("## Tuned Model Scores\n")
+        f.write(tuned_leaderboard[["Model", "Tuned Score", "Error"]].to_string(index=False))
+        f.write("\n\n")
+
+        f.write("## Best Hyperparameters Per Model\n")
+        for model, params in tuned_params.items():
+            f.write(f"### {model}\n")
+            f.write(json.dumps(params, indent=2))
+            f.write("\n")
+        f.write("\n")
+
+        f.write(f"## Best Model: {best_name}\n")
+        if test_metrics:
+            f.write("### Test Set Metrics\n")
+            for k, v in test_metrics.items():
+                f.write(f"{k}: {v}\n")
+            f.write("\n")
+        if shap_summary:
+            f.write("### SHAP Summary Insights (Top Features)\n")
+            for line in shap_summary:
+                f.write(line + "\n")
+            f.write("\n")
+        else:
+            f.write("SHAP summary not available.\n\n")
+
+        if ensemble_metrics:
+            f.write(f"## Ensemble Performance ({', '.join(ensemble_names)})\n")
+            for k, v in ensemble_metrics.items():
+                f.write(f"{k}: {v}\n")
+            f.write("\n")
+        else:
+            f.write("No ensemble performance available.\n\n")
+
+def get_shap_summary(best_model, X_train_proc, feature_names, max_display=10):
+    try:
+        import shap
+        explainer = shap.Explainer(best_model, X_train_proc)
+        shap_values = explainer(X_train_proc)
+        vals = shap_values.values if hasattr(shap_values, "values") else shap_values
+        mean_abs = np.abs(vals).mean(axis=0)
+        top_idx = np.argsort(mean_abs)[::-1][:max_display]
+        summary = []
+        for idx in top_idx:
+            summary.append(f"{feature_names[idx]}: mean(|SHAP|)={mean_abs[idx]:.4f}")
+        return summary
+    except Exception as e:
+        return [f"SHAP summary failed: {e}"]
+
+def get_test_metrics(y_true, y_pred, y_proba):
+    from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, confusion_matrix
+    metrics = {}
+    metrics["Accuracy"] = f"{accuracy_score(y_true, y_pred):.4f}"
+    metrics["F1"] = f"{f1_score(y_true, y_pred, average='binary' if len(set(y_true))==2 else 'macro'):.4f}"
+    if y_proba is not None:
+        try:
+            metrics["ROC AUC"] = f"{roc_auc_score(y_true, y_proba):.4f}"
+        except Exception:
+            metrics["ROC AUC"] = "N/A"
+    cm = confusion_matrix(y_true, y_pred)
+    metrics["Confusion Matrix"] = "\n" + "\n".join(["\t".join(map(str, row)) for row in cm])
+    return metrics
+
 def main():
     parser = argparse.ArgumentParser(description="AutoML Recommender")
     parser.add_argument("train_csv", nargs="?", help="Path to training CSV")
@@ -251,17 +335,107 @@ def main():
         use_polynomial=use_polynomial,
         use_interactions=use_interactions
     )
-    run_baselines(X_train_proc, y_train, scoring=scoring)
+    baseline_leaderboard = run_baselines(X_train_proc, y_train, scoring=scoring)
     best_model, best_name, lb_tuned, tuned_models = run_tuning_and_select_best(
         X_train_proc, y_train, preprocessor, model_list, n_trials=n_trials, n_jobs=n_jobs, cv_n_jobs=cv_n_jobs,
         sampler=sampler, scoring=scoring, use_smote=use_smote,
         export_leaderboard_path=export_leaderboard, export_params_path=export_params
     )
+
+    # Collect tuned params for report
+    tuned_params = {}
+    for i, row in lb_tuned.iterrows():
+        name = row["Model"]
+        if name in tuned_models and hasattr(tuned_models[name], "get_params"):
+            tuned_params[name] = tuned_models[name].get_params()
+        elif name in tuned_models:
+            tuned_params[name] = {}
+        else:
+            tuned_params[name] = {}
+
+    # SHAP summary
+    feature_names = get_feature_names(preprocessor)
+    shap_summary = None
+    if X_train_proc.shape[1] <= 8000:
+        shap_summary = get_shap_summary(best_model, X_train_proc, feature_names, max_display=10)
+
+    # Evaluate best model on test set and collect metrics
+    test_metrics = None
+    if y_test is not None and X_test_proc is not None:
+        y_pred = best_model.predict(X_test_proc)
+        try:
+            y_proba = best_model.predict_proba(X_test_proc)
+            y_proba_bin = y_proba[:, 1] if y_proba.shape[1] > 1 else y_proba.ravel()
+        except Exception:
+            y_proba_bin = None
+        test_metrics = get_test_metrics(y_test, y_pred, y_proba_bin)
+    else:
+        test_metrics = None
+
+    # Evaluate ensemble and collect metrics
+    ensemble_metrics = None
+    ensemble_names = []
+    def _ensemble_metrics_collector(lb_tuned, tuned_models, df_test, X_test_proc, y_test, target_col, scoring, X_train_proc, y_train, ensemble_models=None, ensemble_voting="soft"):
+        from sklearn.ensemble import VotingClassifier
+        if ensemble_models:
+            top_models = [m for m in ensemble_models if m in tuned_models and lb_tuned[lb_tuned["Model"] == m]["Error"].isnull().any()]
+            if len(top_models) < 2:
+                top_models = lb_tuned[lb_tuned["Error"].isnull()].head(3)["Model"].tolist()
+        else:
+            top_models = lb_tuned[lb_tuned["Error"].isnull()].head(3)["Model"].tolist()
+        if len(top_models) < 2:
+            return None, []
+        voters = []
+        for name in top_models:
+            model = tuned_models.get(name)
+            if model is None:
+                continue
+            try:
+                _ = model.predict_proba(X_train_proc[:3])
+                voters.append((name, model))
+            except Exception:
+                continue
+        if len(voters) < 2:
+            return None, []
+        ensemble = VotingClassifier(estimators=voters, voting=ensemble_voting, n_jobs=-1)
+        ensemble.fit(X_train_proc, y_train)
+        if y_test is not None and X_test_proc is not None:
+            y_pred = ensemble.predict(X_test_proc)
+            try:
+                y_proba = ensemble.predict_proba(X_test_proc)
+                y_proba_bin = y_proba[:, 1] if y_proba.shape[1] > 1 else y_proba.ravel()
+            except Exception:
+                y_proba_bin = None
+            metrics = get_test_metrics(y_test, y_pred, y_proba_bin)
+            return metrics, [n for n, _ in voters]
+        return None, [n for n, _ in voters]
+    ensemble_metrics, ensemble_names = _ensemble_metrics_collector(
+        lb_tuned, tuned_models, df_test, X_test_proc, y_test, target_col, scoring, X_train_proc, y_train,
+        ensemble_models=ensemble_models, ensemble_voting=ensemble_voting
+    )
+
+    # Evaluate and plot as before
     evaluate_model(best_model, best_name, df_test, X_test_proc, y_test, target_col, scoring)
     evaluate_ensemble(
         lb_tuned, tuned_models, df_test, X_test_proc, y_test, target_col, scoring, X_train_proc, y_train,
         ensemble_models=ensemble_models, ensemble_voting=ensemble_voting
     )
+
+    # Write report
+    report_path = "report.txt"
+    generate_report(
+        report_path,
+        baseline_leaderboard,
+        lb_tuned,
+        tuned_params,
+        best_name,
+        best_model,
+        shap_summary,
+        test_metrics,
+        ensemble_metrics,
+        ensemble_names,
+    )
+    print(f"\n📝 Exported summary report to {report_path}")
 
 if __name__ == "__main__":
     main()
