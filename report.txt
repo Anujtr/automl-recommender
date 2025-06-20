@@ -1,0 +1,205 @@
+# AutoML Recommender Report
+
+## Baseline Model Scores
+                 Model  Mean Score  Std Dev
+              CatBoost    0.775097 0.024101
+   Logistic Regression    0.766704 0.034553
+      Neural Net (MLP)    0.764527 0.033093
+         Random Forest    0.761851 0.030700
+              LightGBM    0.750217 0.031447
+Support Vector Machine    0.744293 0.022064
+               XGBoost    0.736320 0.035482
+   K-Nearest Neighbors    0.698532 0.018263
+
+## Tuned Model Scores
+             Model  Tuned Score Error
+               MLP     0.904021  None
+               SVM     0.903245  None
+LogisticRegression     0.872563  None
+          CatBoost     0.853383  None
+           XGBoost     0.843555  None
+          LightGBM     0.842975  None
+      RandomForest     0.836490  None
+               KNN     0.828043  None
+
+## Best Hyperparameters Per Model
+### MLP
+{
+  "activation": "relu",
+  "alpha": 0.005943410909966952,
+  "batch_size": "auto",
+  "beta_1": 0.9,
+  "beta_2": 0.999,
+  "early_stopping": false,
+  "epsilon": 1e-08,
+  "hidden_layer_sizes": [
+    64
+  ],
+  "learning_rate": "constant",
+  "learning_rate_init": 0.0011639638013853774,
+  "max_fun": 15000,
+  "max_iter": 200,
+  "momentum": 0.9,
+  "n_iter_no_change": 10,
+  "nesterovs_momentum": true,
+  "power_t": 0.5,
+  "random_state": null,
+  "shuffle": true,
+  "solver": "adam",
+  "tol": 0.0001,
+  "validation_fraction": 0.1,
+  "verbose": false,
+  "warm_start": false
+}
+### SVM
+{
+  "C": 1.1222812291043351,
+  "break_ties": false,
+  "cache_size": 200,
+  "class_weight": "balanced",
+  "coef0": 0.0,
+  "decision_function_shape": "ovr",
+  "degree": 3,
+  "gamma": "auto",
+  "kernel": "linear",
+  "max_iter": -1,
+  "probability": true,
+  "random_state": null,
+  "shrinking": true,
+  "tol": 0.001,
+  "verbose": false
+}
+### LogisticRegression
+{
+  "C": 3.513560098588725,
+  "class_weight": null,
+  "dual": false,
+  "fit_intercept": true,
+  "intercept_scaling": 1,
+  "l1_ratio": null,
+  "max_iter": 100,
+  "multi_class": "deprecated",
+  "n_jobs": null,
+  "penalty": "l2",
+  "random_state": null,
+  "solver": "liblinear",
+  "tol": 0.0001,
+  "verbose": 0,
+  "warm_start": false
+}
+### CatBoost
+{
+  "iterations": 255,
+  "learning_rate": 0.28451087654181534,
+  "depth": 6,
+  "l2_leaf_reg": 8.177788663744122,
+  "border_count": 215
+}
+### XGBoost
+{
+  "objective": "binary:logistic",
+  "base_score": null,
+  "booster": null,
+  "callbacks": null,
+  "colsample_bylevel": null,
+  "colsample_bynode": null,
+  "colsample_bytree": 0.8714345933004856,
+  "device": null,
+  "early_stopping_rounds": null,
+  "enable_categorical": false,
+  "eval_metric": "logloss",
+  "feature_types": null,
+  "feature_weights": null,
+  "gamma": null,
+  "grow_policy": null,
+  "importance_type": null,
+  "interaction_constraints": null,
+  "learning_rate": 0.04934077617514136,
+  "max_bin": null,
+  "max_cat_threshold": null,
+  "max_cat_to_onehot": null,
+  "max_delta_step": null,
+  "max_depth": 11,
+  "max_leaves": null,
+  "min_child_weight": null,
+  "missing": NaN,
+  "monotone_constraints": null,
+  "multi_strategy": null,
+  "n_estimators": 64,
+  "n_jobs": -1,
+  "num_parallel_tree": null,
+  "random_state": null,
+  "reg_alpha": null,
+  "reg_lambda": null,
+  "sampling_method": null,
+  "scale_pos_weight": null,
+  "subsample": 0.6491125314467787,
+  "tree_method": null,
+  "validate_parameters": null,
+  "verbosity": null
+}
+### LightGBM
+{
+  "boosting_type": "gbdt",
+  "class_weight": null,
+  "colsample_bytree": 0.5555931770633609,
+  "importance_type": "split",
+  "learning_rate": 0.11936727291758027,
+  "max_depth": 14,
+  "min_child_samples": 20,
+  "min_child_weight": 0.001,
+  "min_split_gain": 0.0,
+  "n_estimators": 138,
+  "n_jobs": null,
+  "num_leaves": 58,
+  "objective": null,
+  "random_state": null,
+  "reg_alpha": 0.0,
+  "reg_lambda": 0.0,
+  "subsample": 0.9200157208488129,
+  "subsample_for_bin": 200000,
+  "subsample_freq": 0,
+  "min_data_in_leaf": 12,
+  "min_gain_to_split": 0.13236555198979527
+}
+### RandomForest
+{
+  "bootstrap": true,
+  "ccp_alpha": 0.0,
+  "class_weight": null,
+  "criterion": "gini",
+  "max_depth": 18,
+  "max_features": null,
+  "max_leaf_nodes": null,
+  "max_samples": null,
+  "min_impurity_decrease": 0.0,
+  "min_samples_leaf": 2,
+  "min_samples_split": 4,
+  "min_weight_fraction_leaf": 0.0,
+  "monotonic_cst": null,
+  "n_estimators": 184,
+  "n_jobs": null,
+  "oob_score": false,
+  "random_state": null,
+  "verbose": 0,
+  "warm_start": false
+}
+### KNN
+{
+  "algorithm": "auto",
+  "leaf_size": 30,
+  "metric": "minkowski",
+  "metric_params": null,
+  "n_jobs": null,
+  "n_neighbors": 3,
+  "p": 1,
+  "weights": "distance"
+}
+
+## Best Model: MLP
+### SHAP Summary Insights (Top Features)
+SHAP summary failed: The passed model is not callable and cannot be analyzed directly with the given masker! Model: MLPClassifier(alpha=0.005943410909966952, hidden_layer_sizes=(64,),
+              learning_rate_init=0.0011639638013853774)
+
+No ensemble performance available.
+

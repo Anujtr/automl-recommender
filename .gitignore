@@ -22,6 +22,9 @@ venv/
 data/
 !data/.gitkeep          # Keep folder but not actual datasets
 
+# CSV files (predictions, reports, etc.)
+*.csv
+
 # Trained models
 models/
 !models/.gitkeep        # Keep folder, ignore saved models
