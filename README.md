@@ -33,6 +33,12 @@ conda activate automl
 python -m ipykernel install --user --name=automl --display-name "Python (automl)"
 ```
 
+### 🐍 Pip
+
+```bash
+pip install -r requirements.txt
+```
+
 ---
 
 ## Usage
@@ -41,6 +47,12 @@ python -m ipykernel install --user --name=automl --display-name "Python (automl)
 
 ```bash
 python src/main.py <train_csv> <target_column> [test_csv] [--config config.yaml] [options]
+```
+
+### Streamlit App
+
+```bash
+streamlit run app/streamlit_app.py
 ```
 
 **Key options:**
@@ -58,7 +70,9 @@ python src/main.py <train_csv> <target_column> [test_csv] [--config config.yaml]
 - `--ensemble_models`: List of models to use in ensemble (overrides config)
 - `--ensemble_voting`: Voting type for ensemble (soft/hard)
 
-### Output
+---
+
+## Output
 
 - **report.txt**: Exported summary report with baseline/tuned scores, confusion matrix, ROC AUC, best hyperparameters, SHAP insights, and ensemble performance.
 - **models/**: Directory containing the best model and ensemble model pickles.
@@ -74,5 +88,33 @@ python src/main.py <train_csv> <target_column> [test_csv] [--config config.yaml]
 - For full feature usage, see `config.yaml` and run with `python src/main.py --help`.
 - The system supports both YAML and JSON config files.
 - SHAP explanations and summary are included in the report if the number of features is not too large.
+- Temporary files for model downloads and SHAP plots are managed automatically in the Streamlit app.
 
 ---
+
+## Example
+
+```bash
+python src/main.py data/titanic.csv Survived data/test.csv --n_trials 20 --models RandomForest XGBoost LightGBM --scoring f1
+```
+
+Or launch the Streamlit UI:
+
+```bash
+streamlit run app/streamlit_app.py
+```
+
+---
+
+## License
+
+MIT License
+
+---
+
+## Acknowledgments
+
+- [Optuna](https://optuna.org/)
+- [SHAP](https://github.com/slundberg/shap)
+- [scikit-learn](https://scikit-learn.org/)
+- [Streamlit](https://streamlit.io/)
