@@ -54,6 +54,7 @@ python src/main.py <train_csv> <target_column> [test_csv] [--config config.yaml]
 ```bash
 streamlit run app/streamlit_app.py
 ```
+<img width="1680" height="1011" alt="Screenshot 2025-07-25 at 1 32 19 PM" src="https://github.com/user-attachments/assets/d38fa910-f219-4672-8fb7-240e7a279537" />
 
 **Key options:**
 - `--n_trials`: Number of Optuna trials per model
@@ -103,6 +104,7 @@ Or launch the Streamlit UI:
 ```bash
 streamlit run app/streamlit_app.py
 ```
+<img width="1425" height="1009" alt="Screenshot 2025-07-25 at 1 33 41 PM" src="https://github.com/user-attachments/assets/33685f7c-b0bc-4a29-9d24-6c6df4ad4cd0" />
 
 ---
 
