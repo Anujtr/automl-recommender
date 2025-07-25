@@ -80,6 +80,8 @@ streamlit run app/streamlit_app.py
 - **predictions.csv**: Predictions for unlabeled test sets.
 - **ensemble_predictions.csv**: Ensemble predictions for unlabeled test sets.
 - **models/shap_summary.png**: SHAP summary plot for the best model.
+<img width="800" height="430" alt="shap_summary_titanic" src="https://github.com/user-attachments/assets/4d62a102-5ad5-4143-9f36-3c1c5ebf3ef9" />
+
 
 ---
 
